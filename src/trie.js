@@ -1,6 +1,7 @@
 var convert = require('./convert'),
     util = require('./util'),
     rlp = require('./rlp'),
+    q = require('../src/vendor/q/q'),
     leveljs = require('../src/vendor/level.js/levelDotJs');
 
 var BLANK_NODE = '';
@@ -25,8 +26,10 @@ var Trie = function(db, node) {
 Trie.prototype._dbget = function(v) {
     if (!v) return BLANK_NODE;
     if (!util.isString(v) || v.length < 32) return v.slice();
-    var n = this.db.get(v);
-    return n ? rlp.decode(n) : null;
+    return q.ninvoke(this.db, 'get', v)
+        .then(function(n) {
+            return n ? rlp.decode(n) : null;
+        });
 };
 
 Trie.prototype._dbset = function(v) {
@@ -108,11 +111,14 @@ Trie.prototype._update = function(node, path, value) {
     }
     if (node.length === 2) {
         if (node[1] === BLANK_NODE) return BLANK_NODE;
-        sub_node = this._dbget(node[1]);
-        if (sub_node && sub_node.length == 2) {
-            new_path = compactDecode(node[0]).concat(compactDecode(sub_node[0]));
-            node =[compactEncode(new_path), sub_node[1]];
-        }
+        var promGet = this._dbget(node[1]);
+        return promGet.then(function(sub_node) {
+            if (sub_node && sub_node.length == 2) {
+                new_path = compactDecode(node[0]).concat(compactDecode(sub_node[0]));
+                node =[compactEncode(new_path), sub_node[1]];
+            }
+            return this._dbset(node);
+        });
     }
     //console.log(3,node)
        // Database-ize

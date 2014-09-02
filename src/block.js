@@ -1,6 +1,7 @@
 var util = require('./util');
 var rlp = require('./rlp');
 var trie = require('./trie');
+var leveljs = require('level-js');  //require('../src/vendor/level.js/levelDotJs');
 var BigInteger = require('./jsbn/jsbn');
 
 var INITIAL_DIFFICULTY = BigInteger('2').pow(22);
@@ -8,13 +9,9 @@ var GENESIS_PREVHASH = util.repeat('\x00', 32);
 var GENESIS_COINBASE = util.repeat('0', 40);
 var GENESIS_NONCE = util.sha3(String.fromCharCode(42));
 var GENESIS_GAS_LIMIT = BigInteger('10').pow(6);
-var MIN_GAS_LIMIT = BigInteger('125000');
-var GASLIMIT_EMA_FACTOR = BigInteger('1024');
-var BLOCK_REWARD = BigInteger('1500').multiply(util.denoms.finney);
-var UNCLE_REWARD = BigInteger('3').multiply(BLOCK_REWARD)
-                                    .divide(BigInteger('4'));
-var NEPHEW_REWARD = BLOCK_REWARD.divide(BigInteger('8'));
+var BLOCK_REWARD = BigInteger('10').pow(18);
 var BLOCK_DIFF_FACTOR = BigInteger('1024');
+var GASLIMIT_EMA_FACTOR = BigInteger('1024');
 var GENESIS_MIN_GAS_PRICE = BigInteger.ZERO;
 var BLKLIM_FACTOR_NOM = BigInteger('6');
 var BLKLIM_FACTOR_DEN = BigInteger('5');
@@ -77,6 +74,9 @@ acct_structure.forEach(function(v, i) {
 });
 
 
+var stateDb = leveljs('stateDb');
+
+
 var Block = function(opts) {
     opts = opts || {};
     this.prevhash = opts.prevhash || GENESIS_PREVHASH;
@@ -98,11 +98,11 @@ var Block = function(opts) {
     var transaction_list = opts.transaction_list || [];
 
     // TODO persistent trie
-    this.transactions = new trie.Trie(undefined, tx_list_root);
+    this.transactions = new trie.Trie(stateDb, tx_list_root);
     this.transaction_count = BigInteger.ZERO;
 
     // TODO persistent trie
-    this.state = new trie.Trie(undefined, state_root);
+    this.state = new trie.Trie(stateDb, state_root);
 
     if (transaction_list.length > 0) {
         // support init with transactions only if state is known
@@ -313,32 +313,12 @@ Block.prototype.hex_hash = function() {
     return util.encodeHex(this.hash());
 };
 
-
-// Apply rewards to block and uncles
-Block.prototype.finalize = function() {
-    var reward = BLOCK_REWARD.add(
-                NEPHEW_REWARD.multiply(BigInteger(''+this.uncles.length)));
-    this.delta_balance(this.coinbase, reward);
-    this.uncles.forEach(function(uncle_rlp) {
-        var uncle_data = Block.deserialize_header(uncle_rlp);
-        this.delta_balance(uncle_data.coinbase, UNCLE_REWARD);
-    });
-    //TODO
-    //this.commit_state()
-};
-
-Block.prototype.serialize_header_without_nonce = function() {
-    return rlp.encode(this.list_header(['nonce']));
-};
-
-
 Block.init_from_parent = function(opts) {
     var parent = opts.parent;
     var coinbase = opts.coinbase;
 
     opts.extra_data = opts.extra_data || '';
-    opts.timestamp = opts.timestamp ||
-                        BigInteger(''+Math.floor(Date.now() / 1000));
+    opts.timestamp = opts.timestamp || Math.floor(Date.now() / 1000);
     opts.uncles = opts.uncles || [];
 
 
@@ -355,28 +335,13 @@ Block.init_from_parent = function(opts) {
     opts.transaction_list = [];
 
     return new Block(opts);
-};
-
-Block.deserialize_header = function(header_data) {
-    if (util.isString(header_data)) {
-        header_data = rlp.decode(header_data);
-    }
-    //assert len(header_data) == len(block_structure)
-    var kargs = {};
-    // Deserialize all properties
-    block_structure.forEach(function(v, i) {
-        var name = v[0];
-        var typ = v[1];
-        kargs[name] = util.decoders[typ](header_data[i]);
-    });
-    return kargs;
-};
+}
 
 
 function calc_difficulty(parent, timestamp) {
     var offset = parent.difficulty.divide(BLOCK_DIFF_FACTOR);
-    var sign = (timestamp.intValue() - parent.timestamp.intValue() < 42) ?
-                        BigInteger.ONE : BigInteger.ONE.negate();
+    var sign = (timestamp - parent.timestamp < 42) ?
+                        BigerInteger.ONE : BigerInteger.ONE.negate();
     return parent.difficulty.add( offset.multiply(sign) );
 }
 
@@ -391,22 +356,20 @@ function calc_gaslimit(parent) {
     return gl.max(MIN_GAS_LIMIT);
 }
 
-function genesis(initial_alloc, difficulty) {
+function genesis(initial_alloc) {
     initial_alloc = initial_alloc || GENESIS_INITIAL_ALLOC;
-    difficulty = difficulty || INITIAL_DIFFICULTY;
     // https://ethereum.etherpad.mozilla.org/12
     var block = new Block({
         prevhash: GENESIS_PREVHASH,
         coinbase: GENESIS_COINBASE,
         tx_list_root: trie.BLANK_ROOT,
-        difficulty: difficulty,
+        difficulty: INITIAL_DIFFICULTY,
         nonce: GENESIS_NONCE,
         gas_limit: GENESIS_GAS_LIMIT
     });
     for (var addr in initial_alloc) {
         block.set_balance(addr, initial_alloc[addr]);
     }
-    // TODO block.state.db.commit()
     return block;
 }
 
