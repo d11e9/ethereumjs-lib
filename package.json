@@ -1,8 +1,8 @@
 {
   "name": "ethereumjs-lib",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "description": "NodeJS and browser JS library for Ethereum",
-  "main": "./src/index.js",
+  "main": "./index.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/ethereum/ethereumjs-lib.git"
@@ -13,13 +13,26 @@
     "crypto",
     "library"
   ],
+  "dependencies": {
+    "async": "~0.2.10",
+    "bigi": "^1.3.0",
+    "bignum": "^0.7.0",
+    "ecdsa": "^0.5.3",
+    "ecurve": "^0.6.0",
+    "eslint": "^0.8.2",
+    "levelup": "*",
+    "merkle-patricia-tree": "*",
+    "rlp": "*",
+    "secp256k1": "0.0.6",
+    "sha3": "~1.0.0",
+    "underscore": "~1.6.0"
+  },
   "devDependencies": {
-    "jshint": "~2.5.0",
-    "mocha": "1.8.1",
-    "chai": "~1.9.1",
-    "istanbul": "0.1.30",
-    "uglify-js": "*",
-    "node-browserify": "https://github.com/substack/node-browserify/tarball/master"
+    "browserify": "^5.12.0",
+    "eslint": "^0.8.2",
+    "memdown": "^0.10.2",
+    "mocha": ">=1.15.1",
+    "uglifyjs": "^2.3.6"
   },
   "testling": {
     "browsers": [
@@ -27,15 +40,28 @@
       "firefox/15..latest",
       "chrome/22..latest"
     ],
-    "harness": "mocha-qunit",
-    "files": "test/*.js"
+    "harness": "mocha-bdd",
+    "files": [
+      "test/vm.js",
+      "test/transactions.js",
+      "test/runBlock.js",
+      "test/block.js",
+      "test/blockchain.js"
+    ]
   },
   "scripts": {
-    "test": "./script/jshint.sh && istanbul test ./node_modules/.bin/_mocha -- --reporter list test/*.js test/**/*.js",
-    "compile": "browserify src/index.js -s Ethereum | uglifyjs > ethereum-min.js"
+    "test": "./script/eslint.sh && mocha --timeout 5000 --reporter spec ./test/ ./test/common/",
+    "compile": "./node_modules/browserify/bin/cmd.js index.js -s Ethereum | node ./node_modules/uglifyjs/index.js > ethereum-min.js"
   },
   "author": {
     "name": "Ethereum",
     "url": "http://ethereum.org"
+  },
+  "browser": {
+    "lib/network": false,
+    "ecdsa-native": false,
+    "./lib/ecdsaOps.js": "./browser/ecdsaOps.js",
+    "bignum": "./browser/bignum.js",
+    "sha3": "./browser/sha3.js"
   }
 }
